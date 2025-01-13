@@ -27,7 +27,7 @@ def setup_seed(seed):
 def main():
     # PyTorch initialization
     # gpu_tracker = MemTracker()  # Used to monitor memory (of gpu)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     if device.type == 'cuda':
         torch.cuda.set_device(device)
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
@@ -102,7 +102,7 @@ def main():
         last_time = time.time()
 
         # Schedule in parallel
-        while ~done:
+        while not done:
             with torch.no_grad():
                 actions = model.policy_old.act(state, memories, dones)
             state, rewards, dones = env.step(actions)
