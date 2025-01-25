@@ -14,6 +14,7 @@ from visdom import Visdom
 import PPO_model
 from env.case_generator import CaseGenerator
 from validate import validate, get_validate_env
+from env.fjsp_env import FJSPEnv
 
 
 def setup_seed(seed):
@@ -26,7 +27,7 @@ def setup_seed(seed):
 def main():
     # PyTorch initialization
     # gpu_tracker = MemTracker()  # Used to monitor memory (of gpu)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     if device.type == 'cuda':
         torch.cuda.set_device(device)
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
@@ -70,19 +71,17 @@ def main():
     save_path = './save/train_{0}'.format(str_time)
     os.makedirs(save_path)
     # Training curve storage path (average of validation set)
-    writer_ave = pd.ExcelWriter('{0}/training_ave_{1}.xlsx'.format(save_path, str_time))
+    with pd.ExcelWriter('{0}/training_ave_{1}.xlsx'.format(save_path, str_time)) as writer_ave:
+        data_file = pd.DataFrame(np.arange(10, 1010, 10), columns=["iterations"])
+        data_file.to_excel(writer_ave, sheet_name='Sheet1', index=False)
+
     # Training curve storage path (value of each validating instance)
-    writer_100 = pd.ExcelWriter('{0}/training_100_{1}.xlsx'.format(save_path, str_time))
+    with pd.ExcelWriter('{0}/training_100_{1}.xlsx'.format(save_path, str_time)) as writer_100:
+        data_file = pd.DataFrame(np.arange(10, 1010, 10), columns=["iterations"])
+        data_file.to_excel(writer_100, sheet_name='Sheet1', index=False)
+
     valid_results = []
     valid_results_100 = []
-    data_file = pd.DataFrame(np.arange(10, 1010, 10), columns=["iterations"])
-    data_file.to_excel(writer_ave, sheet_name='Sheet1', index=False)
-    writer_ave.save()
-    writer_ave.close()
-    data_file = pd.DataFrame(np.arange(10, 1010, 10), columns=["iterations"])
-    data_file.to_excel(writer_100, sheet_name='Sheet1', index=False)
-    writer_100.save()
-    writer_100.close()
 
     # Start training iteration
     start_time = time.time()
@@ -93,7 +92,7 @@ def main():
             # \mathcal{B} instances use consistent operations to speed up training
             nums_ope = [random.randint(opes_per_job_min, opes_per_job_max) for _ in range(num_jobs)]
             case = CaseGenerator(num_jobs, num_mas, opes_per_job_min, opes_per_job_max, nums_ope=nums_ope)
-            env = gym.make('fjsp-v0', case=case, env_paras=env_paras)
+            env = FJSPEnv(case=case, env_paras=env_paras)
             print('num_job: ', num_jobs, '\tnum_mas: ', num_mas, '\tnum_opes: ', sum(nums_ope))
 
         # Get state and completion signal
@@ -103,7 +102,7 @@ def main():
         last_time = time.time()
 
         # Schedule in parallel
-        while ~done:
+        while not done:
             with torch.no_grad():
                 actions = model.policy_old.act(state, memories, dones)
             state, rewards, dones = env.step(actions)
@@ -156,14 +155,13 @@ def main():
 
     # Save the data of training curve to files
     data = pd.DataFrame(np.array(valid_results).transpose(), columns=["res"])
-    data.to_excel(writer_ave, sheet_name='Sheet1', index=False, startcol=1)
-    writer_ave.save()
-    writer_ave.close()
+    with pd.ExcelWriter('{0}/training_ave_{1}.xlsx'.format(save_path, str_time)) as writer_ave:
+        data.to_excel(writer_ave, sheet_name='Sheet1', index=False, startcol=1)
+
     column = [i_col for i_col in range(100)]
     data = pd.DataFrame(np.array(torch.stack(valid_results_100, dim=0).to('cpu')), columns=column)
-    data.to_excel(writer_100, sheet_name='Sheet1', index=False, startcol=1)
-    writer_100.save()
-    writer_100.close()
+    with pd.ExcelWriter('{0}/training_100_{1}.xlsx'.format(save_path, str_time)) as writer_100:
+        data.to_excel(writer_100, sheet_name='Sheet1', index=False, startcol=1)
 
     print("total_time: ", time.time() - start_time)
 
